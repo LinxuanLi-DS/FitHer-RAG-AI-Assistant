@@ -1,34 +1,32 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from jose import jwt, JWTError
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError
+from fastapi.security import HTTPAuthorizationCredentials
 import os
 import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from api.models.user import User, get_db
 from api.models.schemas import ChatRequest, ChatResponse
+from api.routers.users import decode_user_id, security
 from src.rag_pipeline import ask, retrieve, build_prompt, qwen
 
 router = APIRouter(prefix="/chat", tags=["chat"])
-security = HTTPBearer(auto_error=False)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "fitrag-secret-2024")
-ALGORITHM = "HS256"
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     if not credentials:
         return None
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id = int(payload.get("sub"))
-        return db.query(User).filter(User.id == user_id).first()
-    except:
+        user_id = decode_user_id(credentials.credentials)
+    except (JWTError, TypeError, ValueError):
         return None
+    return db.query(User).filter(User.id == user_id).first()
+
 
 def build_user_profile(user):
     if not user:
